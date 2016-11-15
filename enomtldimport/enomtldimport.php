@@ -133,7 +133,7 @@ function enomnewtldimport_deactivate($vars) {
     $fields['statusid'] = '0';
     $LANG = $vars['_lang'];
     
-    $data = enomnewtldimport_DB_GetWatchlistSettingsLocal();
+    $data = enomnewtldimport_DB_GetSettingsLocal();
     $wlenabled = $data['enabled'];
     $wlconfigured = $data['configured'];
     $portalid = $data['portalid'];
@@ -173,7 +173,7 @@ function enomnewtldimport_upgrade($vars) {
 function enomnewtldimport_clientarea($vars) {
 	#no client area items, just admin
 }
-function enomnewtldimport_NEWTLDS_sidebar($vars) 
+function enomnewtldimport_sidebar($vars) 
 {
     //Not sure what this is for, I didnt notice this being displayed anywhere.
     $modulelink = $vars['modulelink'];
@@ -231,12 +231,12 @@ function enomnewtldimport_DB_GetCreateHookTable(){
     if (!mysql_num_rows(full_query("select * from `tblconfiguration` where setting='enomnewtldimport_cronbatchsize';")))
         full_query("insert into `tblconfiguration` (Setting, value) VALUES('enomnewtldimport_cronbatchsize', '50');");
 }
-function enomnewtldimport_DB_GetWatchlistSettingsLocal()
+function enomnewtldimport_DB_GetSettingsLocal()
 {
     global $enomnewtldimport_DefaultEnvironment;
     global $enomnewtldimport_DBName;
     
-    $result = select_query($enomnewtldimport_DBName,"enabled,configured,portalid,environment,enomlogin,enompassword,supportemail,companyname,companyurl",array());
+    $result = select_query($enomnewtldimport_DBName,"enabled,configured,environment,enomlogin,enompassword",array());
     $data = mysql_fetch_array($result);
     
     //Some basic checks to ensure its not null and to give it an empty string
@@ -260,34 +260,20 @@ function enomnewtldimport_DB_GetWatchlistSettingsLocal()
     else
         $data['enomlogin'] = decrypt($data['enomlogin']);
     
-    if(enomnewtldimport_Helper_IsNullOrEmptyString($data['companyname']))
-    {
-        $data['companyname'] = '';
-    }
-    
-    if(enomnewtldimport_Helper_IsNullOrEmptyString($data['companyurl']))
-    {
-        $data['companyurl'] = '';
-    }
     
     if(enomnewtldimport_Helper_IsNullOrEmptyString($data['environment']))
     {
         $data['environment'] = $enomnewtldimport_DefaultEnvironment;
     }
     
-    if(enomnewtldimport_Helper_IsNullOrEmptyString($data['supportemail']))
-    {
-        $data['supportemail'] = '';
-    }
-    
     return $data;
 }
-function enomnewtldimport_DB_GetWatchlistPortalExists()
+function enomnewtldimport_DB_GetConfigured()
 {
     if (!enomnewtldimport_DB_TableExists())
         return false;
     
-    $data = enomnewtldimport_DB_GetWatchlistSettingsLocal();
+    $data = enomnewtldimport_DB_GetSettingsLocal();
     if( !$data)
         return false;
 
@@ -309,58 +295,6 @@ function enomnewtldimport_DB_HookTableExists()
     return true;
 }
 
-function enomnewtldimport_DB_GetWatchlistIsEnabled()
-{
-    if (!enomnewtldimport_DB_TableExists())
-        return false;
-    
-    $data = enomnewtldimport_DB_GetWatchlistSettingsLocal();
-    if( !$data)
-        return false;
-
-    return $data['enabled'] == 1;
-}
-function enomnewtldimport_DB_UpdateDB($vars,$portalid='0')
-{
-    global $enomnewtldimport_DBName;
-    
-    $LANG = $vars['_lang'];
-    $companyname = $vars['companyname'];
-    $companyurl = $vars['companyurl'];
-    $supportemail = $vars['supportemail'];
-    $datetime = enomnewtldimport_Helper_GetDateTime();
-    
-    if( (int)$portalid > 0)
-    {
-        //Only update the portal account ID if its a number and its greater than zeo
-        update_query($enomnewtldimport_DBName,
-            array(
-                    "configured"=>"1", 
-                    "portalid"=>$portalid, 
-                    "configureddate"=>$datetime,
-                    "companyname"=>$companyname,
-                    "companyurl"=>$companyurl,
-                    "supportemail"=>$supportemail,
-                    ), 
-                    array("id"=>"1")
-                    );
-        return 1;
-    }
-    else
-    {
-        update_query($enomnewtldimport_DBName,
-            array(
-                    "configured"=>"1", 
-                    "configureddate"=>$datetime,
-                    "companyname"=>$companyname,
-                    "companyurl"=>$companyurl,
-                    "supportemail"=>$supportemail,
-                   ), 
-                    array("id"=>"1")
-                    );
-        return 2;
-    }
-}
 function enomnewtldimport_DB_BootstrapUidPw($enomuid, $enompw)
 {
     global $enomnewtldimport_DBName;
@@ -488,7 +422,7 @@ function enomnewtldimport_Helper_Getenvironment($environment)
     global $enomnewtldimport_DefaultEnvironment;
     if(enomnewtldimport_Helper_IsNullOrEmptyString($environment))
     {
-        $data = enomnewtldimport_DB_GetWatchlistSettingsLocal();
+        $data = enomnewtldimport_DB_GetSettingsLocal();
         $environment = $data['environment'];
     }
     
@@ -502,11 +436,11 @@ function enomnewtldimport_Helper_Getenvironment($environment)
 /* ENOM API CALLS */
 ##############################################################################
 
-function enomnewtldimport_API_GetPortalToken($vars,&$token,$fields) 
+function enomnewtldimport_API_GetRetailPricing($vars,&$xmldata,$fields) 
 {
     $LANG = $vars['_lang'];
     $postfields = array();
-    $postfields['command'] = "PORTAL_GETTOKEN";
+    $postfields['command'] = "PE_GetRetailPricing";
 
     if (is_array($fields)) {
         foreach ($fields AS $x=>$y) 
@@ -518,7 +452,6 @@ function enomnewtldimport_API_GetPortalToken($vars,&$token,$fields)
 	if ($success) 
     {
 	    $result = "success";
-        $token = $xmldata->{'token'};
 	    return true;
 	}
     else 
@@ -546,44 +479,6 @@ function enomnewtldimport_API_HandleErrors($xmldata)
     return $result;
 }
 
-function enomnewtldimport_API_CreatePortalAccount($vars,&$portalid,$fields)
-{
-    $LANG = $vars['_lang'];
-    $postfields = array();
-    $postfields['command'] = "PORTAL_CREATEPORTAL";
-
-    if (is_array($fields)) {
-        foreach ($fields AS $x=>$y) 
-            $postfields[$x] = $y;
-    }
-    
-    $xmldata = enomnewtldimport_API_CallEnom($vars,$postfields);
-    $success = ($xmldata->{'ErrCount'} == 0);
-	if ($success) 
-    {
-	    $result = "success";
-        $portalid = $xmldata->{'portalid'};
-        if( !enomnewtldimport_Helper_IsNullOrEmptyString($portalid))
-        {
-            return true;
-        }
-        else
-        {
-            $portalid = '0';
-            return false;
-        }
-	}
-    else 
-    {
-        $result = enomnewtldimport_API_HandleErrors($xmldata);
-        if (!$result) 
-            $result = $LANG['api_unknownerror'];;
-        
-        enomnewtldimport_AddError($result);
-        $portalid = '0';
-    }
-	return false;
-}
 function enomnewtldimport_API_UpdatePortalAccount($vars,$portalid,$fields)
 {    
     $LANG = $vars['_lang'];
@@ -612,47 +507,14 @@ function enomnewtldimport_API_UpdatePortalAccount($vars,$portalid,$fields)
     }
 	return false;
 }
-function enomnewtldimport_API_GetPortalAccount($vars,&$portalid)
-{
-    $LANG = $vars['_lang'];
-    $postfields = array();
-    $postfields['command'] = "PORTAL_GETDETAILS";
 
-    if (is_array($fields)) {
-        foreach ($fields AS $x=>$y) 
-            $postfields[$x] = $y;
-    }
-    
-    $xmldata = enomnewtldimport_API_CallEnom($vars,$postfields);
-    $success = ($xmldata->{'ErrCount'} == 0);
-	if ($success) 
-    {
-	    $result = "success";
-        $portalid = $xmldata->{'tldportaldetails'}->{'portalid'};
-        if( enomnewtldimport_Helper_IsNullOrEmptyString($portalid))
-        {
-            $portalid = '0';
-        }
-        return true;
-	} 
-    else 
-    {
-        $result = enomnewtldimport_API_HandleErrors($xmldata);
-        if (!$result) 
-            $result = $LANG['api_unknownerror'];;
-        
-        enomnewtldimport_AddError($result);
-        $portalid = '0';
-    }
-	return false;
-}
 function enomnewtldimport_API_CallEnom($vars,$postfields) 
 {
     global $enomnewtldimport_ModuleName;
     global $enomnewtldimport_CurrentVersion;
     
     $LANG = $vars['_lang'];
-    $data = enomnewtldimport_DB_GetWatchlistSettingsLocal();
+    $data = enomnewtldimport_DB_GetSettingsLocal();
     $environment = enomnewtldimport_Helper_Getenvironment($data['environment']);
     $portalid = $data['portalid'];
 
@@ -714,7 +576,7 @@ function enomnewtldimport_output($vars) {
     
     $modulelink = $vars['modulelink'];
     $LANG = $vars['_lang'];
-    $data = enomnewtldimport_DB_GetWatchlistSettingsLocal();
+    $data = enomnewtldimport_DB_GetSettingsLocal();
     $companyname = $data['companyname'];
     $companyurl = $data['companyurl'];
     $enomuid = $data['enomlogin'];
@@ -724,7 +586,7 @@ function enomnewtldimport_output($vars) {
     
     $environment = enomnewtldimport_Helper_Getenvironment($data['environment']);
 
-    $configured = enomnewtldimport_DB_GetWatchlistPortalExists();
+    $configured = enomnewtldimport_DB_GetConfigured();
     $form_iframe_tab = $configured ? 2 : 1;
     $form_button_text = $configured ? $LANG['form_update'] : $LANG['form_activate'];
     $form_terms_text = $configured ? $LANG['form_terms2'] : $LANG['form_terms1'];
@@ -773,10 +635,10 @@ function enomnewtldimport_output($vars) {
             $fields = array();
             
             //If we already have this in the database then we dont need to try and get it again
-                $nofields = array();
-                //See if they have a portal account already - like if they activated and then deactivated the addon
-                //as in that case we would have dropped the table - this would help to repopulate those fields
-                $success = enomnewtldimport_API_GetPortalAccount($vars,$portalid,$nofields);
+			$nofields = array();
+			//See if they have a portal account already - like if they activated and then deactivated the addon
+			//as in that case we would have dropped the table - this would help to repopulate those fields
+			$success = enomnewtldimport_API_GetRetailPricing($vars,$portalid,$nofields);
                 
             if($success)
             {
@@ -793,7 +655,7 @@ function enomnewtldimport_output($vars) {
                 $mydata['enomLogin'] = encrypt($enomuid);
                 $mydata['enomPassword'] = encrypt($enompw);
                 
-                $result = enomnewtldimport_DB_UpdateDB($mydata, $portalid);
+                $result = enomnewtldimport_DB_BootstrapUidPw($mydata['enomLogin'], $mydata['enomPassword']);
                 if( $result == 1)
                 {
                     $success_message = $LANG['api_setupsuccess'];
