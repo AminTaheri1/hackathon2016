@@ -38,7 +38,7 @@
  * - Modified the configuration form HTML
  * - Added slight form validation for user input in enomnewtlds_output()
  * - Added Current Version into easy to see variable to update the actual version and pass to API calls
- * - Added a “Is Bundled” variable that will be in the TPL output and passed in to enom – should be TRUE for you, FALSE for us
+ * - Added a ï¿½Is Bundledï¿½ variable that will be in the TPL output and passed in to enom ï¿½ should be TRUE for you, FALSE for us
  * - Updated images and CSS (logo, etc)
  * - Removed HeaderText from language file and TPL, modified some TPL HTML
  * - Renamed/Rebranded so Portal is not prevelant in the naming of functions or displayed
@@ -55,25 +55,25 @@ if (!defined("WHMCS"))
 ##############################################################################
 
 #Current Version - used in the Config array, also passed into enom calls
-$enomnewtlds_CurrentVersion = "1.0";
+$enomnewtldimport_CurrentVersion = "1.0";
 
 //This will be true for when its bundled with WHMCS, False when enom distributes
-$enomnewtlds_isbundled = false; 
+$enomnewtldimport_isbundled = false; 
 
 //Global Error message
-$enomnewtlds_errormessage = '';
+$enomnewtldimport_errormessage = '';
 
 //Any random string here is fine, it doesnt really matter.  This is used to generate a password to send to enom that will never change
 //Since its based off of their username and userID - both of which can't change - we cant use the WHMCS password because the user can change it
-$enomnewtlds_mysalt = 'sAR2Th4Ste363tUkUw';
+$enomnewtldimport_mysalt = 'sAR2Th4Ste363tUkUw';
 
 #this is really only useful to us in testing, this will always be 0 for production when we launch - although it is still DB controlled so it can be overridden
-$enomnewtlds_DefaultEnvironment = '0';
+$enomnewtldimport_DefaultEnvironment = '0';
 
 #if I ever change the names of tables, I just do it once and its all done :)
-$enomnewtlds_ModuleName = 'enomnewtlds';
-$enomnewtlds_DBName = 'mod_' . $enomnewtlds_ModuleName;
-$enomnewtlds_CronDBName = $enomnewtlds_DBName . '_cron';
+$enomnewtldimport_ModuleName = 'enomnewtldimport';
+$enomnewtldimport_DBName = 'mod_' . $enomnewtldimport_ModuleName;
+$enomnewtldimport_CronDBName = $enomnewtldimport_DBName . '_cron';
 
 ##############################################################################
 
@@ -83,103 +83,82 @@ $enomnewtlds_CronDBName = $enomnewtlds_DBName . '_cron';
 /* WHMCS CORE FUNCTIONS FOR THE PLUGIN */
 ##############################################################################
 
-function enomnewtlds_config() {
-    global $enomnewtlds_CurrentVersion;
+function enomnewtldimport_config() {
+    global $enomnewtldimport_CurrentVersion;
     $configarray = array(
     "name" => "eNom New TLDs",
-    "description" => "Earn commissions offering New TLDs services to your customers.  This addon includes eNom's New TLDs Watchlist and order processing for New TLDs launch phases including: Sunrise, Landrush, and Pre-Registration. Learn more at http://www.enom.com/r/01.aspx",
-    "version" => $enomnewtlds_CurrentVersion,
+    "description" => "Import new TLDs and automatically set pricing",
+    "version" => $enomnewtldimport_CurrentVersion,
     "author" => "eNom",
     "language" => "english",
     "fields" => array());
     return $configarray;
 }
-function enomnewtlds_activate($vars) {
+function enomnewtldimport_activate($vars) {
 
-    global $enomnewtlds_DefaultEnvironment;
-    global $enomnewtlds_DBName;
+    global $enomnewtldimport_DefaultEnvironment;
+    global $enomnewtldimport_DBName;
     $LANG = $vars['_lang'];
     
     # Create Custom DB Table
-    $sql = enomnewtlds_DB_GetCreateTable();
+    $sql = enomnewtldimport_DB_GetCreateTable();
     $retval = mysql_query($sql);
     if(!$retval)
     {
-        return array('status'=>'error','description'=> $LANG['activate_failed1'] . $enomnewtlds_DBName . ' : ' . mysql_error());
+        return array('status'=>'error','description'=> $LANG['activate_failed1'] . $enomnewtldimport_DBName . ' : ' . mysql_error());
     }    
     else
     {
         $companyname = '';
         $domain = '';
-        $date = enomnewtlds_Helper_GetDateTime();
-        $data = enomnewtlds_DB_GetDefaults();
-        $domain = enomnewtlds_Helper_GetWatchlistUrl($data['companyurl']);
+        $date = enomnewtldimport_Helper_GetDateTime();
 
-        insert_query($enomnewtlds_DBName,
+        insert_query($enomnewtldimport_DBName,
                 array("enabled"=>"1",
                     "configured"=>"0", 
-                    "environment"=>$enomnewtlds_DefaultEnvironment, 
-                    "companyname"=>$data['companyname'], 
-                    "companyurl"=>$domain, 
-                    "supportemail"=>$data['supportemail'], 
+                    "environment"=>$enomnewtldimport_DefaultEnvironment, 
                     "enableddate"=>$date));
         
-        enomnewtlds_DB_GetCreateHookTable();
+        enomnewtldimport_DB_GetCreateHookTable();
         return array('status'=>'success','description'=>$LANG['activate_success1']);
     }
 }
-function enomnewtlds_deactivate($vars) {
+function enomnewtldimport_deactivate($vars) {
 
-    global $enomnewtlds_errormessage;
-    global $enomnewtlds_DBName;
-    global $enomnewtlds_CronDBName;
+    global $enomnewtldimport_errormessage;
+    global $enomnewtldimport_DBName;
+    global $enomnewtldimport_CronDBName;
     
     $fields = array();
     $fields['statusid'] = '0';
     $LANG = $vars['_lang'];
     
-    $data = enomnewtlds_DB_GetWatchlistSettingsLocal();
+    $data = enomnewtldimport_DB_GetWatchlistSettingsLocal();
     $wlenabled = $data['enabled'];
     $wlconfigured = $data['configured'];
     $portalid = $data['portalid'];
-    
-    if( ($wlenabled && $wlconfigured) || (int)$portalid > 0)
-    {
-        $success = enomnewtlds_API_UpdatePortalAccount($vars,$portalid,$fields);
-        if( !$success)
-        {
-            //Do we really care if this fails?
-            //return array('status'=>'error','description'=>$LANG['deactivate_failed1'] . '  ' . $enomnewtlds_errormessage);
-        }
-    }
-    
-    if (enomnewtlds_DB_TableExists())
-    {
-        # Remove Custom DB Table
-        $sql = 'DROP TABLE `' . $enomnewtlds_DBName .'`;';
-        $retval = mysql_query($sql);
-    }
-    else
-        $retval = 1;
-    
-    if(!$retval )
-    {
-        return array('status'=>'error','description'=>$LANG['deactivate_failed2'] . ':  ' . mysql_error());
-    }    
-    else
-    {
-        if(enomnewtlds_DB_HookTableExists())
-        {
-            $sql = 'DROP TABLE `' . $enomnewtlds_CronDBName .'`;';
-            $retval = mysql_query($sql);
-        }
-        //We dont really care if this works or not - they could also enable/disable before the cron runs to enable/create the other table too.
-        return array('status'=>'success','description'=>$LANG['deactivate_success1']);
-    }
+        
+	# Remove Custom DB Table
+	$sql = 'DROP TABLE `' . $enomnewtldimport_DBName .'`;';
+	$retval = mysql_query($sql);
+	    
+	if(enomnewtldimport_DB_HookTableExists())
+	{
+		$sql = 'DROP TABLE `' . $enomnewtldimport_CronDBName .'`;';
+		$retval = mysql_query($sql);
+	}
+	
+	
+	#dont care if it failed, just return success
+    $retval = 1;
+
+	//We dont really care if this works or not - they could also enable/disable before the cron runs to enable/create the other table too.
+	return array('status'=>'success','description'=>$LANG['deactivate_success1']);
 }
-function enomnewtlds_upgrade($vars) {
+
+function enomnewtldimport_upgrade($vars) {
     $version = $vars['version'];
-    global $enomnewtlds_CurrentVersion;
+    global $enomnewtldimport_CurrentVersion;
     
     # Run SQL Updates for V1.0 -> V1.1
     if ($version < 1.1) {
@@ -191,131 +170,10 @@ function enomnewtlds_upgrade($vars) {
         //No DB Updates for this release, at least not yet!
     }
 }
-function enomnewtlds_clientarea($vars) {
-
-    global $enomnewtlds_errormessage;
-    global $enomnewtlds_mysalt;
-    global $enomnewtlds_isbundled;
-    $token = '';
-    
-    $modulelink = $vars['modulelink'];
-    $version = $vars['version'];
-    $LANG = $vars['_lang'];
-    $pversion = ($enomnewtlds_isbundled ? "bundled" : "nonbundled") . " version " . $version;
-    
-    $userid = $_SESSION['uid'];
-    
-    if ($userid) 
-    {
-        # User is logged in - may need a better error handling than DIE 
-        $query = mysql_query("SELECT email FROM tblclients WHERE id=".(int)$userid) 
-            or die("There was a problem with the SQL query: " . mysql_error()); 
-        
-        $data = mysql_fetch_array($query);
-        $email = $data[0];
-        
-        if(!$email)
-        {
-            #The user has no email on file?  WTF!
-            enomnewtlds_AddError($LANG['noemail']);
-        }
-        else
-        {
-            if(!$enomnewtlds_mysalt)
-            {
-                enomnewtlds_AddError($LANG['nosalt']);
-            }
-            else
-            {
-                $code = hash("sha512", $email.$enomnewtlds_mysalt);
-                $password = substr($code, 0, 15);
-            }
-        }
-    } 
-    else 
-    {
-        # User is not logged in
-        enomnewtlds_AddError($LANG['notloggedin']);
-    }
-    
-    //Get some basic settings of the portal and the user
-    $data = enomnewtlds_DB_GetWatchlistSettingsLocal();
-    $wlenabled = $data['enabled'];
-    $portalid = $data['portalid'];
-    $environment = $data['environment'];
-    
-    if( enomnewtlds_Helper_IsNullOrEmptyString($portalid))
-        $portalid = "0";
-    
-    $hasportalaccount = ((int)$portalid > 0);
-    $success = true;
-    
-    //I guess we really only need to try and do this if they do not have a portal account already, AND the watchlist is enabled
-    //Otherwise if its not enabled then who cares!
-    if($wlenabled && !$hasportalaccount)
-    {
-        enomnewtlds_AddError($LANG['noportalacct']);
-        $success = false;
-    }
-    
-    if( $success && $portalid != '0')
-    {
-        $linkarray = array(
-            'sitesource'=>'whmcs',
-            'embeded'=>'1',
-            'ruid'=>$data['enomlogin'],
-            'rpw'=> $data['enompassword'],
-            'pw'=> $password,
-            'portaluserid' => $userid,
-            "email"=> $email,
-            'portalid' => $portalid
-        );
-
-        $success = enomnewtlds_API_GetPortalToken($vars,$token, $linkarray);
-    }
-    else
-    {
-        if($portalid == '0')
-        {
-            enomnewtlds_AddError($LANG['noportalaccount']);
-        }
-        else if(!$success)
-        {
-            //.We already added an error above when we set success false, probably no need for another one
-            //enomnewtlds_AddError($LANG['noportalaccount']);
-        }
-    }
-    
-    $varsArray = array(
-    'NEWTLDS_HASH' => $code,
-    'WHMCS__EMAIL' => $email,
-    'NEWTLDS_PASSWORD' => $password,
-    'RESELLER_UID' => $data['enomlogin'],
-    'RESELLER_PW' => $data['enompassword'],
-    'NEWTLDS_ENABLED' => $wlenabled,
-    'NEWTLDS_PORTALACCOUNT' => $hasportalaccount,
-    'NEWTLDS_LINK' => $token,
-    'WHMCS_CUSTOMERID' => $userid,
-    'PORTAL_ID' => $portalid,
-    'NEWTLDS_ERRORS' => $enomnewtlds_errormessage,
-    'NEWTLDS_NOPORTALACCT' => $LANG['noportalaccount'],
-    'NEWTLDS_NOTENABLED' => $LANG['headertext'],
-    'NEWTLDS_NOTCONFIGURED' => $LANG['notconfigured'],
-    'NEWTLDS_NOTLOGGEDIN' => $LANG['notloggedin'],
-    'NEWTLDS_URLHOST' =>     enomnewtlds_Helper_GetWatchlistHost($environment),
-    'NEWTLDS_PLUGINVERSION' => $pversion,
-    );
-    
-    return array(
-    'pagetitle' => $LANG['pagetitle'],
-    'breadcrumb' => array($modulelink=>$LANG['pagetitle']),
-    'templatefile' => 'enomnewtlds',
-    'requirelogin' => true,
-    'requiressl' => true,
-    'vars' => $varsArray
-    );
+function enomnewtldimport_clientarea($vars) {
+	#no client area items, just admin
 }
-function enomnewtlds_NEWTLDS_sidebar($vars) 
+function enomnewtldimport_NEWTLDS_sidebar($vars) 
 {
     //Not sure what this is for, I didnt notice this being displayed anywhere.
     $modulelink = $vars['modulelink'];
@@ -336,167 +194,146 @@ function enomnewtlds_NEWTLDS_sidebar($vars)
 /* WHMCS LOCAL DB FUNCTIONS */
 ##############################################################################
 
-function enomnewtlds_DB_GetCreateTable(){
-    global $enomnewtlds_DefaultEnvironment;
-    global $enomnewtlds_DBName;
+function enomnewtldimport_DB_GetCreateTable(){
+    global $enomnewtldimport_DefaultEnvironment;
+    global $enomnewtldimport_DBName;
     
-    $sql = "CREATE TABLE IF NOT EXISTS `" . $enomnewtlds_DBName ."` (
+    $sql = "CREATE TABLE IF NOT EXISTS `" . $enomnewtldimport_DBName ."` (
             `id` INT( 10 ) NOT NULL AUTO_INCREMENT PRIMARY KEY ,
             `enabled` INT( 1 ) NOT NULL DEFAULT '0' ,
             `configured` INT( 1 ) NOT NULL DEFAULT '0' ,
-            `portalid` MEDIUMINT( 18 ) NOT NULL DEFAULT '0' ,
-            `environment` INT( 1 ) NOT NULL DEFAULT '" . $enomnewtlds_DefaultEnvironment . "' ,
+            `environment` INT( 1 ) NOT NULL DEFAULT '" . $enomnewtldimport_DefaultEnvironment . "' ,
             `enomlogin` VARCHAR( 272 ) NULL ,
             `enompassword` VARCHAR( 272 ) NULL ,
             `enableddate` VARCHAR( 272 ) NULL ,
-            `configureddate` VARCHAR( 272 ) NULL,
-            `supportemail` VARCHAR( 387 ) NULL , 
-            `companyname` VARCHAR( 387 ) NULL , 
-            `companyurl` VARCHAR( 387 ) NULL)
+            `configureddate` VARCHAR( 272 ) NULL
             ENGINE = MYISAM";    
     
     return($sql);
 }
-function enomnewtlds_DB_GetCreateHookTable(){
+function enomnewtldimport_DB_GetCreateHookTable(){
     
-    global $enomnewtlds_CronDBName;
+    global $enomnewtldimport_CronDBName;
     
-    if (!enomnewtlds_DB_HookTableExists())
+    if (!enomnewtldimport_DB_HookTableExists())
     {
-        full_query("CREATE TABLE IF NOT EXISTS `" . $enomnewtlds_CronDBName . "` (
+        full_query("CREATE TABLE IF NOT EXISTS `" . $enomnewtldimport_CronDBName . "` (
             `id` INT( 100 ) NOT NULL AUTO_INCREMENT PRIMARY KEY ,
-            `domainname` VARCHAR( 272 ) NOT NULL,
-            `domainnameid` INT ( 10 ) NOT NULL,
-            `emailaddress` VARCHAR( 272 ) NOT NULL,
-            `expdate` VARCHAR( 272 ) NOT NULL,
-            `regdate` VARCHAR( 272 ) NOT NULL,
-            `userid` VARCHAR( 272 ) NOT NULL ,
+            `tldid` INT ( 10 ) NOT NULL,
+            `tld` VARCHAR( 272 ) NOT NULL,
             `regprice` VARCHAR( 272 ) NOT NULL ,
             `renewprice` VARCHAR( 272 ) NOT NULL,
-            `regperiod` INT( 2 ) NOT NULL DEFAULT  '1' ,
-            `provisioned` INT( 1 ) NOT NULL DEFAULT  '0', 
-            `provisiondate` VARCHAR( 272 ) NULL )
+            `transferprice` VARCHAR( 272 ) NOT NULL,
+            `regperiod` INT( 2 ) NOT NULL DEFAULT  '1' )
              ENGINE = MYISAM;");
-        
-        full_query("ALTER TABLE " . $enomnewtlds_CronDBName . "
-              ADD CONSTRAINT UniqueDomainName 
-                UNIQUE (domainname);");
     }
     
-    if (!mysql_num_rows(full_query("select * from `tblconfiguration` where setting='enomnewtlds_cronbatchsize';")))
-        full_query("insert into `tblconfiguration` (Setting, value) VALUES('enomnewtlds_cronbatchsize', '50');");
+    if (!mysql_num_rows(full_query("select * from `tblconfiguration` where setting='enomnewtldimport_cronbatchsize';")))
+        full_query("insert into `tblconfiguration` (Setting, value) VALUES('enomnewtldimport_cronbatchsize', '50');");
 }
-function enomnewtlds_DB_GetDefaults()
+function enomnewtldimport_DB_GetWatchlistSettingsLocal()
 {
-    $data = array();
-    $data['companyname'] = enomnewtlds_DB_GetDefaultcompanyname();
-    $data['companyurl'] = enomnewtlds_DB_GetDefaultDomainName();
-    $data['supportemail'] = enomnewtlds_DB_GetDefaultSupportEmail();
-    return $data;
-}
-function enomnewtlds_DB_GetWatchlistSettingsLocal()
-{
-    global $enomnewtlds_DefaultEnvironment;
-    global $enomnewtlds_DBName;
+    global $enomnewtldimport_DefaultEnvironment;
+    global $enomnewtldimport_DBName;
     
-    $result = select_query($enomnewtlds_DBName,"enabled,configured,portalid,environment,enomlogin,enompassword,supportemail,companyname,companyurl",array());
+    $result = select_query($enomnewtldimport_DBName,"enabled,configured,portalid,environment,enomlogin,enompassword,supportemail,companyname,companyurl",array());
     $data = mysql_fetch_array($result);
     
     //Some basic checks to ensure its not null and to give it an empty string
     //Just in case php is as finickey as .Net is when it comes to using a null
-    if(enomnewtlds_Helper_IsNullOrEmptyString($data['portalid']))
+    if(enomnewtldimport_Helper_IsNullOrEmptyString($data['portalid']))
     {
         $data['portalid'] = '0';
     }
     
-    if(enomnewtlds_Helper_IsNullOrEmptyString($data['enompassword']))
+    if(enomnewtldimport_Helper_IsNullOrEmptyString($data['enompassword']))
     {
         $data['enompassword'] = '';
     }
     else
         $data['enompassword'] = decrypt($data['enompassword']);
     
-    if(enomnewtlds_Helper_IsNullOrEmptyString($data['enomlogin']))
+    if(enomnewtldimport_Helper_IsNullOrEmptyString($data['enomlogin']))
     {
         $data['enomlogin'] = '';
     }
     else
         $data['enomlogin'] = decrypt($data['enomlogin']);
     
-    if(enomnewtlds_Helper_IsNullOrEmptyString($data['companyname']))
+    if(enomnewtldimport_Helper_IsNullOrEmptyString($data['companyname']))
     {
         $data['companyname'] = '';
     }
     
-    if(enomnewtlds_Helper_IsNullOrEmptyString($data['companyurl']))
+    if(enomnewtldimport_Helper_IsNullOrEmptyString($data['companyurl']))
     {
         $data['companyurl'] = '';
     }
     
-    if(enomnewtlds_Helper_IsNullOrEmptyString($data['environment']))
+    if(enomnewtldimport_Helper_IsNullOrEmptyString($data['environment']))
     {
-        $data['environment'] = $enomnewtlds_DefaultEnvironment;
+        $data['environment'] = $enomnewtldimport_DefaultEnvironment;
     }
     
-    if(enomnewtlds_Helper_IsNullOrEmptyString($data['supportemail']))
+    if(enomnewtldimport_Helper_IsNullOrEmptyString($data['supportemail']))
     {
         $data['supportemail'] = '';
     }
     
     return $data;
 }
-function enomnewtlds_DB_GetWatchlistPortalExists()
+function enomnewtldimport_DB_GetWatchlistPortalExists()
 {
-    if (!enomnewtlds_DB_TableExists())
+    if (!enomnewtldimport_DB_TableExists())
         return false;
     
-    $data = enomnewtlds_DB_GetWatchlistSettingsLocal();
+    $data = enomnewtldimport_DB_GetWatchlistSettingsLocal();
     if( !$data)
         return false;
 
     return $data['configured'] == 1;
 }
-function enomnewtlds_DB_TableExists()
+function enomnewtldimport_DB_TableExists()
 {
-    if (!mysql_num_rows(full_query("SHOW TABLES LIKE '" . $enomnewtlds_DBName . "'")))
+    if (!mysql_num_rows(full_query("SHOW TABLES LIKE '" . $enomnewtldimport_DBName . "'")))
         return false;
 
     return true;
 }
-function enomnewtlds_DB_HookTableExists()
+function enomnewtldimport_DB_HookTableExists()
 {
-    global $enomnewtlds_CronDBName;
-    if (!mysql_num_rows(full_query("SHOW TABLES LIKE '" . $enomnewtlds_CronDBName . "'")))
+    global $enomnewtldimport_CronDBName;
+    if (!mysql_num_rows(full_query("SHOW TABLES LIKE '" . $enomnewtldimport_CronDBName . "'")))
         return false;
 
     return true;
 }
 
-function enomnewtlds_DB_GetWatchlistIsEnabled()
+function enomnewtldimport_DB_GetWatchlistIsEnabled()
 {
-    if (!enomnewtlds_DB_TableExists())
+    if (!enomnewtldimport_DB_TableExists())
         return false;
     
-    $data = enomnewtlds_DB_GetWatchlistSettingsLocal();
+    $data = enomnewtldimport_DB_GetWatchlistSettingsLocal();
     if( !$data)
         return false;
 
     return $data['enabled'] == 1;
 }
-function enomnewtlds_DB_UpdateDB($vars,$portalid='0')
+function enomnewtldimport_DB_UpdateDB($vars,$portalid='0')
 {
-    global $enomnewtlds_DBName;
+    global $enomnewtldimport_DBName;
     
     $LANG = $vars['_lang'];
     $companyname = $vars['companyname'];
     $companyurl = $vars['companyurl'];
     $supportemail = $vars['supportemail'];
-    $datetime = enomnewtlds_Helper_GetDateTime();
+    $datetime = enomnewtldimport_Helper_GetDateTime();
     
     if( (int)$portalid > 0)
     {
         //Only update the portal account ID if its a number and its greater than zeo
-        update_query($enomnewtlds_DBName,
+        update_query($enomnewtldimport_DBName,
             array(
                     "configured"=>"1", 
                     "portalid"=>$portalid, 
@@ -511,7 +348,7 @@ function enomnewtlds_DB_UpdateDB($vars,$portalid='0')
     }
     else
     {
-        update_query($enomnewtlds_DBName,
+        update_query($enomnewtldimport_DBName,
             array(
                     "configured"=>"1", 
                     "configureddate"=>$datetime,
@@ -524,34 +361,15 @@ function enomnewtlds_DB_UpdateDB($vars,$portalid='0')
         return 2;
     }
 }
-function enomnewtlds_DB_BootstrapUidPw($enomuid, $enompw)
+function enomnewtldimport_DB_BootstrapUidPw($enomuid, $enompw)
 {
-    global $enomnewtlds_DBName;
-    $datetime = enomnewtlds_Helper_GetDateTime();
-    update_query($enomnewtlds_DBName, 
+    global $enomnewtldimport_DBName;
+    $datetime = enomnewtldimport_Helper_GetDateTime();
+    update_query($enomnewtldimport_DBName, 
                     array("configureddate"=>$datetime,
                             "enomlogin"=>$enomuid, 
                             "enompassword"=>$enompw),  
                     array("id"=>"1"));
-}
-function enomnewtlds_DB_GetDefaultcompanyname()
-{
-    $result = select_query("tblconfiguration","value",array("setting"=>"CompanyName"));
-    $data = mysql_fetch_array($result);
-    return $data[0];
-}
-function enomnewtlds_DB_GetDefaultDomainName()
-{
-    //$result = select_query("tblconfiguration","value",array("setting"=>"Domain"));
-    $result = select_query("tblconfiguration","value",array("setting"=>"SystemURL"));
-    $data = mysql_fetch_array($result);
-    return $data[0];
-}
-function enomnewtlds_DB_GetDefaultSupportEmail()
-{
-    $result = select_query("tblconfiguration","value",array("setting"=>"Email")); //TODO
-    $data = mysql_fetch_array($result);
-    return $data[0];
 }
 
 ##############################################################################
@@ -562,32 +380,32 @@ function enomnewtlds_DB_GetDefaultSupportEmail()
 /* WHMCS HELPER FUNCTIONS */
 ##############################################################################
 
-function enomnewtlds_Helper_GetDateTime(){
+function enomnewtldimport_Helper_GetDateTime(){
     //Yes, even though its micro time, I dont actually use it :)
     $t = microtime(true);
     $micro = sprintf("%06d",($t - floor($t)) * 1000000);
     $d = new DateTime( date('Y-m-d H:i:s.'.$micro,$t) );
     return $d->format("Y-m-d H:i:s");
 }
-function enomnewtlds_Helper_IsNullOrEmptyString($str){ 
+function enomnewtldimport_Helper_IsNullOrEmptyString($str){ 
     return (!isset($str) || trim($str)==='' || strlen($str) == 0); 
 }
-function enomnewtlds_Helper_FormatDomain($domainname)
+function enomnewtldimport_Helper_FormatDomain($domainname)
 {
     $website = preg_replace( '/^(htt|ht|tt)p\:?\/\//i', '', $domainname );  
-    if( enomnewtlds_Helper_endsWith($website, '/'))
+    if( enomnewtldimport_Helper_endsWith($website, '/'))
     {
         $length = strlen($needle);
         $website = substr($haystack, 0, ( $length > 0) ? $length-1 : $length);
     }
     return $website;
 }
-function enomnewtlds_Helper_startsWith($haystack, $needle)
+function enomnewtldimport_Helper_startsWith($haystack, $needle)
 {
     $length = strlen($needle);
     return (substr($haystack, 0, $length) === $needle);
 }
-function enomnewtlds_Helper_endsWith($haystack, $needle)
+function enomnewtldimport_Helper_endsWith($haystack, $needle)
 {
     $length = strlen($needle);
     if ($length == 0) {
@@ -596,28 +414,28 @@ function enomnewtlds_Helper_endsWith($haystack, $needle)
 
     return (substr($haystack, -$length) === $needle);
 }
-function enomnewtlds_AddError($error)
+function enomnewtldimport_AddError($error)
 {
-    global $enomnewtlds_errormessage;
+    global $enomnewtldimport_errormessage;
 
-    if(enomnewtlds_Helper_IsNullOrEmptyString($enomnewtlds_errormessage))
+    if(enomnewtldimport_Helper_IsNullOrEmptyString($enomnewtldimport_errormessage))
     {
-        $enomnewtlds_errormessage = $error;
+        $enomnewtldimport_errormessage = $error;
     }
     else
     {
-        $enomnewtlds_errormessage .=  '<br />' . $error;
+        $enomnewtldimport_errormessage .=  '<br />' . $error;
     }
 }
-function enomnewtlds_Helper_FormatAPICallForEmail($fields,$environment)
+function enomnewtldimport_Helper_FormatAPICallForEmail($fields,$environment)
 {
-    $url = 'https://'.enomnewtlds_Helper_GetAPIHost($environment).'/interface.asp?';
+    $url = 'https://'.enomnewtldimport_Helper_GetAPIHost($environment).'/interface.asp?';
     foreach ($fields AS $x=>$y) 
         $url .= $x."=".$y."&";
 
     return $url;
 }
-function enomnewtlds_Helper_GetAPIHost($environment)
+function enomnewtldimport_Helper_GetAPIHost($environment)
 {
     switch($environment)
     {
@@ -641,7 +459,7 @@ function enomnewtlds_Helper_GetAPIHost($environment)
 
     return $url;
 }
-function enomnewtlds_Helper_GetDocumentationHost($environment)
+function enomnewtldimport_Helper_GetDocumentationHost($environment)
 {
     switch($environment)
     {
@@ -649,13 +467,13 @@ function enomnewtlds_Helper_GetDocumentationHost($environment)
             $url ='resellertest.enom.com';
             break;
         case '2':
-            $url ='enom.staging.local';
+            $url ='staging.enom.com';
             break;
         case '3':
             $url ='enom.build.local';
             break;
         case '4':
-            $url ='enom5.enom.com';
+            $url ='preprod.enom.com';
             break;
         
         default:
@@ -665,54 +483,17 @@ function enomnewtlds_Helper_GetDocumentationHost($environment)
 
     return $url;
 }
-function enomnewtlds_Helper_GetWatchlistHost($environment)
+function enomnewtldimport_Helper_Getenvironment($environment)
 {
-    switch($environment)
+    global $enomnewtldimport_DefaultEnvironment;
+    if(enomnewtldimport_Helper_IsNullOrEmptyString($environment))
     {
-        case '1':
-            $url ='resellertest.tldportal.com';
-            break;
-        case '2':
-            $url ='tldportal.staging.local';
-            break;
-        case '3':
-            $url ='tldportal.build.local';
-            break;
-        case '4':
-            $url ='preprod.tldportal.com';
-            break;
-        
-        default:
-            $url ='tldportal.com';
-            break;
-    }
-
-    return $url;
-}
-function enomnewtlds_Helper_Getenvironment($environment)
-{
-    global $enomnewtlds_DefaultEnvironment;
-    if(enomnewtlds_Helper_IsNullOrEmptyString($environment))
-    {
-        $data = enomnewtlds_DB_GetWatchlistSettingsLocal();
+        $data = enomnewtldimport_DB_GetWatchlistSettingsLocal();
         $environment = $data['environment'];
     }
     
     return $environment;
 }
-function enomnewtlds_Helper_GetWatchlistUrl($domain='')
-{
-    global $enomnewtlds_ModuleName;
-    if(enomnewtlds_Helper_IsNullOrEmptyString($domain))
-    {
-        $data = enomnewtlds_DB_GetDefaults();
-        $domain = $data['companyurl'];
-    }
-    
-    $domain .= enomnewtlds_Helper_endsWith($domain,'/') ? 'index.php?m=' . $enomnewtlds_ModuleName : '/index.php?' . $enomnewtlds_ModuleName;
-    return $domain;
-}
-
 ##############################################################################
 
 
@@ -721,7 +502,7 @@ function enomnewtlds_Helper_GetWatchlistUrl($domain='')
 /* ENOM API CALLS */
 ##############################################################################
 
-function enomnewtlds_API_GetPortalToken($vars,&$token,$fields) 
+function enomnewtldimport_API_GetPortalToken($vars,&$token,$fields) 
 {
     $LANG = $vars['_lang'];
     $postfields = array();
@@ -732,7 +513,7 @@ function enomnewtlds_API_GetPortalToken($vars,&$token,$fields)
             $postfields[$x] = $y;
     }
     
-    $xmldata = enomnewtlds_API_CallEnom($vars,$postfields);
+    $xmldata = enomnewtldimport_API_CallEnom($vars,$postfields);
     $success = ($xmldata->{'ErrCount'} == 0);
 	if ($success) 
     {
@@ -742,16 +523,16 @@ function enomnewtlds_API_GetPortalToken($vars,&$token,$fields)
 	}
     else 
     {
-        $result = enomnewtlds_API_HandleErrors($xmldata);
+        $result = enomnewtldimport_API_HandleErrors($xmldata);
         if (!$result) 
             $result = $LANG['api_unknownerror'];;
         
-        enomnewtlds_AddError($result);
+        enomnewtldimport_AddError($result);
     }
 	return false;
 }
 
-function enomnewtlds_API_HandleErrors($xmldata)
+function enomnewtldimport_API_HandleErrors($xmldata)
 {
     $result = '';
     $errcnt = $xmldata->{'ErrCount'};
@@ -765,7 +546,7 @@ function enomnewtlds_API_HandleErrors($xmldata)
     return $result;
 }
 
-function enomnewtlds_API_CreatePortalAccount($vars,&$portalid,$fields)
+function enomnewtldimport_API_CreatePortalAccount($vars,&$portalid,$fields)
 {
     $LANG = $vars['_lang'];
     $postfields = array();
@@ -776,13 +557,13 @@ function enomnewtlds_API_CreatePortalAccount($vars,&$portalid,$fields)
             $postfields[$x] = $y;
     }
     
-    $xmldata = enomnewtlds_API_CallEnom($vars,$postfields);
+    $xmldata = enomnewtldimport_API_CallEnom($vars,$postfields);
     $success = ($xmldata->{'ErrCount'} == 0);
 	if ($success) 
     {
 	    $result = "success";
         $portalid = $xmldata->{'portalid'};
-        if( !enomnewtlds_Helper_IsNullOrEmptyString($portalid))
+        if( !enomnewtldimport_Helper_IsNullOrEmptyString($portalid))
         {
             return true;
         }
@@ -794,16 +575,16 @@ function enomnewtlds_API_CreatePortalAccount($vars,&$portalid,$fields)
 	}
     else 
     {
-        $result = enomnewtlds_API_HandleErrors($xmldata);
+        $result = enomnewtldimport_API_HandleErrors($xmldata);
         if (!$result) 
             $result = $LANG['api_unknownerror'];;
         
-        enomnewtlds_AddError($result);
+        enomnewtldimport_AddError($result);
         $portalid = '0';
     }
 	return false;
 }
-function enomnewtlds_API_UpdatePortalAccount($vars,$portalid,$fields)
+function enomnewtldimport_API_UpdatePortalAccount($vars,$portalid,$fields)
 {    
     $LANG = $vars['_lang'];
     $postfields = array();
@@ -815,7 +596,7 @@ function enomnewtlds_API_UpdatePortalAccount($vars,$portalid,$fields)
             $postfields[$x] = $y;
     }
     
-    $xmldata = enomnewtlds_API_CallEnom($vars,$postfields);
+    $xmldata = enomnewtldimport_API_CallEnom($vars,$postfields);
     $success = ($xmldata->{'ErrCount'} == 0);
 	if ($success) 
     {
@@ -823,15 +604,15 @@ function enomnewtlds_API_UpdatePortalAccount($vars,$portalid,$fields)
 	} 
     else 
     {
-        $result = enomnewtlds_API_HandleErrors($xmldata);
+        $result = enomnewtldimport_API_HandleErrors($xmldata);
         if (!$result) 
             $result = $LANG['api_unknownerror'];;
         
-        enomnewtlds_AddError($result);
+        enomnewtldimport_AddError($result);
     }
 	return false;
 }
-function enomnewtlds_API_GetPortalAccount($vars,&$portalid)
+function enomnewtldimport_API_GetPortalAccount($vars,&$portalid)
 {
     $LANG = $vars['_lang'];
     $postfields = array();
@@ -842,13 +623,13 @@ function enomnewtlds_API_GetPortalAccount($vars,&$portalid)
             $postfields[$x] = $y;
     }
     
-    $xmldata = enomnewtlds_API_CallEnom($vars,$postfields);
+    $xmldata = enomnewtldimport_API_CallEnom($vars,$postfields);
     $success = ($xmldata->{'ErrCount'} == 0);
 	if ($success) 
     {
 	    $result = "success";
         $portalid = $xmldata->{'tldportaldetails'}->{'portalid'};
-        if( enomnewtlds_Helper_IsNullOrEmptyString($portalid))
+        if( enomnewtldimport_Helper_IsNullOrEmptyString($portalid))
         {
             $portalid = '0';
         }
@@ -856,23 +637,23 @@ function enomnewtlds_API_GetPortalAccount($vars,&$portalid)
 	} 
     else 
     {
-        $result = enomnewtlds_API_HandleErrors($xmldata);
+        $result = enomnewtldimport_API_HandleErrors($xmldata);
         if (!$result) 
             $result = $LANG['api_unknownerror'];;
         
-        enomnewtlds_AddError($result);
+        enomnewtldimport_AddError($result);
         $portalid = '0';
     }
 	return false;
 }
-function enomnewtlds_API_CallEnom($vars,$postfields) 
+function enomnewtldimport_API_CallEnom($vars,$postfields) 
 {
-    global $enomnewtlds_ModuleName;
-    global $enomnewtlds_CurrentVersion;
+    global $enomnewtldimport_ModuleName;
+    global $enomnewtldimport_CurrentVersion;
     
     $LANG = $vars['_lang'];
-    $data = enomnewtlds_DB_GetWatchlistSettingsLocal();
-    $environment = enomnewtlds_Helper_Getenvironment($data['environment']);
+    $data = enomnewtldimport_DB_GetWatchlistSettingsLocal();
+    $environment = enomnewtldimport_Helper_Getenvironment($data['environment']);
     $portalid = $data['portalid'];
 
     //See if we set the UID already, if so then dont add it again
@@ -891,24 +672,24 @@ function enomnewtlds_API_CallEnom($vars,$postfields)
     
     if (!in_array('portalid', $postfields)) 
     {
-        if( !enomnewtlds_Helper_IsNullOrEmptyString($portalid) && (int)$portalid > 0)
+        if( !enomnewtldimport_Helper_IsNullOrEmptyString($portalid) && (int)$portalid > 0)
             $postfields['portalid'] = $portalid;
     }
     
     $postfields['ResponseType'] = "XML";
     $postfields['Source'] = 'WHMCS';
     $postfields['sourceid'] = '37';
-    $postfields['bundled'] = $enomnewtlds_isbundled ? 1 : 0;
-    $postfields['pluginversion'] = $enomnewtlds_CurrentVersion;
+    $postfields['bundled'] = $enomnewtldimport_isbundled ? 1 : 0;
+    $postfields['pluginversion'] = $enomnewtldimport_CurrentVersion;
     
-    $url = 'https://'.enomnewtlds_Helper_GetAPIHost($environment).'/interface.asp';
+    $url = 'https://'.enomnewtldimport_Helper_GetAPIHost($environment).'/interface.asp';
     $data = curlCall($url,$postfields);
     
     //$xmldata = XMLtoArray($data);
-    //$url = enomnewtlds_Helper_FormatAPICallForEmail($postfields, $environment);
+    //$url = enomnewtldimport_Helper_FormatAPICallForEmail($postfields, $environment);
     
     $xmldata = simplexml_load_string($data);
-    logModuleCall($enomnewtlds_ModuleName,$postfields['command'],$postfields,$data,$xmldata);
+    logModuleCall($enomnewtldimport_ModuleName,$postfields['command'],$postfields,$data,$xmldata);
     return $xmldata;
 }
 
@@ -920,20 +701,20 @@ function enomnewtlds_API_CallEnom($vars,$postfields)
 /* ADMIN CONFIGURATION FORM  */
 ##############################################################################
 
-function enomnewtlds_output($vars) {
+function enomnewtldimport_output($vars) {
 
     //use the global guy but reset it now since we dont care much about anything it could have had previously
-    global $enomnewtlds_errormessage;
-    $enomnewtlds_errormessage = '';
+    global $enomnewtldimport_errormessage;
+    $enomnewtldimport_errormessage = '';
     
-    global $enomnewtlds_isbundled;
-    global $enomnewtlds_CurrentVersion;
+    global $enomnewtldimport_isbundled;
+    global $enomnewtldimport_CurrentVersion;
     
     $success_message = '';
     
     $modulelink = $vars['modulelink'];
     $LANG = $vars['_lang'];
-    $data = enomnewtlds_DB_GetWatchlistSettingsLocal();
+    $data = enomnewtldimport_DB_GetWatchlistSettingsLocal();
     $companyname = $data['companyname'];
     $companyurl = $data['companyurl'];
     $enomuid = $data['enomlogin'];
@@ -941,14 +722,14 @@ function enomnewtlds_output($vars) {
     $portalid = $data['portalid'];
     $supportemail = $data['supportemail'];
     
-    $environment = enomnewtlds_Helper_Getenvironment($data['environment']);
+    $environment = enomnewtldimport_Helper_Getenvironment($data['environment']);
 
-    $configured = enomnewtlds_DB_GetWatchlistPortalExists();
+    $configured = enomnewtldimport_DB_GetWatchlistPortalExists();
     $form_iframe_tab = $configured ? 2 : 1;
     $form_button_text = $configured ? $LANG['form_update'] : $LANG['form_activate'];
     $form_terms_text = $configured ? $LANG['form_terms2'] : $LANG['form_terms1'];
     $documentation_link = $LANG['documentation'];
-    $url = enomnewtlds_Helper_GetDocumentationHost($environment);
+    $url = enomnewtldimport_Helper_GetDocumentationHost($environment);
     
     if( $environment != '0')
     {
@@ -958,17 +739,6 @@ function enomnewtlds_output($vars) {
     
     $create = false;
     $update = false;
-
-    if( enomnewtlds_Helper_IsNullOrEmptyString($companyname) || enomnewtlds_Helper_IsNullOrEmptyString($companyurl)|| enomnewtlds_Helper_IsNullOrEmptyString($supportemail))
-    {
-        $data = enomnewtlds_DB_GetDefaults();
-        if(enomnewtlds_Helper_IsNullOrEmptyString($companyname))
-            $companyname = $data['companyname'];
-        if(enomnewtlds_Helper_IsNullOrEmptyString($companyurl))
-            $companyurl = enomnewtlds_Helper_GetWatchlistUrl($data['companyurl']);
-        if(enomnewtlds_Helper_IsNullOrEmptyString($supportemail))
-            $supportemail = $data['supportemail'];
-    }
     
     if (isset($_POST['enomuid'])) 
     {
@@ -980,71 +750,40 @@ function enomnewtlds_output($vars) {
             $enompw = $data['enompassword'];
         }
         
-        $companyname = $_POST['companyname'];
-        $companyurl = $_POST['companyurl'];
-        $supportemail = $_POST['supportemail'];
         $success = true;
         
         # Form was submitted, do some validation
-        if( enomnewtlds_Helper_IsNullOrEmptyString($enomuid))
+        if( enomnewtldimport_Helper_IsNullOrEmptyString($enomuid))
         {
-            enomnewtlds_AddError($LANG['enomuidrequired']);
+            enomnewtldimport_AddError($LANG['enomuidrequired']);
             $success = false;
         }
         
-        if( enomnewtlds_Helper_IsNullOrEmptyString($enompw))
+        if( enomnewtldimport_Helper_IsNullOrEmptyString($enompw))
         {
-            enomnewtlds_AddError($LANG['enompwdrequired']);
+            enomnewtldimport_AddError($LANG['enompwdrequired']);
             $success = false;
         }
-        
-        if(enomnewtlds_Helper_IsNullOrEmptyString($companyname))
-            $companyname = enomnewtlds_DB_GetDefaultcompanyname();
-
-        if(enomnewtlds_Helper_IsNullOrEmptyString($companyurl))
-            $companyurl = enomnewtlds_Helper_GetWatchlistUrl();
-        
-        if(enomnewtlds_Helper_IsNullOrEmptyString($supportemail))
-            $supportemail = enomnewtlds_DB_GetDefaultSupportEmail();
-        
+                
         if($success)
         {
-            
-            enomnewtlds_DB_BootstrapUidPw(encrypt($enomuid), encrypt($enompw));
+            enomnewtldimport_DB_BootstrapUidPw(encrypt($enomuid), encrypt($enompw));
             
             # Call enom API
             $fields = array();
-            $fields['companyurl'] = $companyurl;
-            $fields['companyname'] = $companyname;
-            $fields['supportemailaddress'] = $supportemail;
-            $fields['portalType'] = '2';
-            $fields['statusid'] = '1';
             
             //If we already have this in the database then we dont need to try and get it again
-            if( enomnewtlds_Helper_IsNullOrEmptyString($portalid) || (int)$portalid <= 0)
-            {
                 $nofields = array();
                 //See if they have a portal account already - like if they activated and then deactivated the addon
                 //as in that case we would have dropped the table - this would help to repopulate those fields
-                $success = enomnewtlds_API_GetPortalAccount($vars,$portalid,$nofields);
-            }
-            
+                $success = enomnewtldimport_API_GetPortalAccount($vars,$portalid,$nofields);
+                
             if($success)
             {
-                if( enomnewtlds_Helper_IsNullOrEmptyString($portalid) || (int)$portalid <= 0)
-                {
-                    $create = true;
-                    $success = enomnewtlds_API_CreatePortalAccount($vars,$portalid,$fields);    
-                }
-                else
-                {
-                    $update = true;
-                    $success = enomnewtlds_API_UpdatePortalAccount($vars,$portalid,$fields);
-                }
             }
             else
             {
-                enomnewtlds_AddError($LANG['api_failedtoget']);
+                enomnewtldimport_AddError($LANG['api_failedtoget']);
                 $success = false;
             }
             
@@ -1053,11 +792,8 @@ function enomnewtlds_output($vars) {
                 $mydata = array();
                 $mydata['enomLogin'] = encrypt($enomuid);
                 $mydata['enomPassword'] = encrypt($enompw);
-                $mydata['companyname'] = $companyname;
-                $mydata['companyurl'] = $companyurl;
-                $mydata['supportemail'] = $supportemail;
                 
-                $result = enomnewtlds_DB_UpdateDB($mydata, $portalid);
+                $result = enomnewtldimport_DB_UpdateDB($mydata, $portalid);
                 if( $result == 1)
                 {
                     $success_message = $LANG['api_setupsuccess'];
@@ -1071,13 +807,13 @@ function enomnewtlds_output($vars) {
             {
                 //If the GET above failed, then we dont need to add anything else because we already set an error for that
                 if( $create || $update)
-                    enomnewtlds_AddError( $create ? $LANG['api_failedtocreate'] : $LANG['api_failedtoupdate']);
+                    enomnewtldimport_AddError( $create ? $LANG['api_failedtocreate'] : $LANG['api_failedtoupdate']);
             }
         }
     }
     
     //Set the local to the global so I can be lazy and not update code for now :)
-    $errormessage = $enomnewtlds_errormessage;
+    $errormessage = $enomnewtldimport_errormessage;
 
 ?>
 
@@ -1149,11 +885,6 @@ function enomnewtlds_output($vars) {
         return true;
     }
     
-    function ResetDefault()
-    {
-        var companyurl = document.getElementById('companyurl');
-        companyurl.value = '<?php echo enomnewtlds_Helper_GetWatchlistUrl(); ?>';
-    }
 
 </script>
 
@@ -1183,7 +914,7 @@ function enomnewtlds_output($vars) {
 	.tld_wrp .sError1, 
 	.tld_wrp .sSuccess1 {text-align:left;padding:8px 10px 8px 42px;line-height:18px;font-size:14px;margin:1px 0 15px 0;position:relative;z-index:1;border:1px solid #000000;-moz-border-radius:5px;-webkit-border-radius:5px;border-radius:5px}
 	.tld_wrp .sError1:Before, 
-	.tld_wrp .sSuccess1:Before {content:"";position:absolute;top:4px;left:10px;z-index:2;height:24px;width:24px;background:transparent url('../modules/addons/enomnewtlds/images/ico-info24x.png') no-repeat 0 0}
+	.tld_wrp .sSuccess1:Before {content:"";position:absolute;top:4px;left:10px;z-index:2;height:24px;width:24px;background:transparent url('../modules/addons/enomnewtldimport/images/ico-info24x.png') no-repeat 0 0}
 	.tld_wrp .sError1 {border-color:#CC9999;color:#C00;background:#FFEAEA}
 	.tld_wrp .sSuccess1 {border-color:#A7B983;color:#333;background:#E8FF74}
 				
@@ -1197,13 +928,13 @@ function enomnewtlds_output($vars) {
 
 	<div class="tld_wrp" style="padding:10px;width:852px;">
 
-		<?php if(!enomnewtlds_Helper_IsNullOrEmptyString($errormessage)) { ?>
+		<?php if(!enomnewtldimport_Helper_IsNullOrEmptyString($errormessage)) { ?>
 			<div class="sError1">
 				<strong><?php echo $errormessage ?></strong>
 			</div>
 		<?php } ?>
 		
-		<?php if(!enomnewtlds_Helper_IsNullOrEmptyString($success_message)){ ?>
+		<?php if(!enomnewtldimport_Helper_IsNullOrEmptyString($success_message)){ ?>
 			<div class="sSuccess1">
 				<strong><?php echo $success_message ?></strong>
 			</div>
@@ -1231,7 +962,7 @@ function enomnewtlds_output($vars) {
 						<tr>
 							<td colspan="2" width="100%" style="font-size:14px;padding-bottom:10px">
 								<strong><?php echo $LANG['form_enompassword'] ?></strong> <span style="color:red">*</span><br />
-								<input type="password" style="width:99%" name="enompw" id="enompw" value="<?php if(!enomnewtlds_Helper_IsNullOrEmptyString($enompw)) { echo "************"; } ?>" onfocus="RevertForm(this.id);" />
+								<input type="password" style="width:99%" name="enompw" id="enompw" value="<?php if(!enomnewtldimport_Helper_IsNullOrEmptyString($enompw)) { echo "************"; } ?>" onfocus="RevertForm(this.id);" />
 							</td>
 						</tr>
 						<tr>
@@ -1262,7 +993,7 @@ function enomnewtlds_output($vars) {
 								<input type="submit" value="<?php echo $form_button_text ?> &raquo;" style="cursor:pointer;border-style:outset;padding:7px;font-size:1.55em;*font-size:1.3em;font-family:Arial, Helvetica, sans-serif;font-weight:normal;-moz-border-radius:5px;-webkit-border-radius:5px;border-radius:5px;border-width:1px" onclick="return ValidateForm();" />
 							</td>
 							<td width="50%" valign="bottom" style="text-align:right;padding-top:15px">
-								<img src="../modules/addons/enomnewtlds/images/enom.gif" border="0" />
+								<img src="../modules/addons/enomnewtldimport/images/enom.gif" border="0" />
 							</td>
 						</tr>
 						<!--<tr>
@@ -1275,7 +1006,7 @@ function enomnewtlds_output($vars) {
 			<div style="float:right;width:350px;min-height:485px">
 				<div style="padding:20px">
 					<div style="border:1px solid #CCC;background:#FFF;">
-						<iframe frameborder="0" height="440px" width="308px" marginheight="0" marginwidth="0" scrolling="yes" src="https://<?php echo $url?>/whmcs/tld-portal/addon-iframe.aspx?p=<?php echo $form_iframe_tab ?>&version=<?php echo $enomnewtlds_CurrentVersion?>&bundled=<?php echo $enomnewtlds_isbundled ? "1" : "0" ?>"></iframe>
+						<iframe frameborder="0" height="440px" width="308px" marginheight="0" marginwidth="0" scrolling="yes" src="https://<?php echo $url?>/whmcs/tld-portal/addon-iframe.aspx?p=<?php echo $form_iframe_tab ?>&version=<?php echo $enomnewtldimport_CurrentVersion?>&bundled=<?php echo $enomnewtldimport_isbundled ? "1" : "0" ?>"></iframe>
 					</div>
 				</div>
 			</div>
